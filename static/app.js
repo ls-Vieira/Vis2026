@@ -2,6 +2,8 @@ const state = {
   datasetId: null,
   cy: null,
   graph: null,
+  selectedNode: null,
+  selectedCommunity: null,
 };
 
 const palette = [
@@ -17,7 +19,52 @@ const palette = [
   "#ca8a04",
 ];
 
+const ui = {
+  noDataset: "No dataset loaded.",
+  loadFileApply: "Load a file to apply parameters.",
+  uploadBusy: "Reading RIS and generating embeddings...",
+  uploadFail: "Failed to load file.",
+  loadedCount: "{filename} - {count} articles loaded",
+  paramsReady: "Parameters ready. Click APPLY to build the graph.",
+  buildBusy: "Building graph and detecting communities...",
+  graphFail: "Failed to build graph.",
+  graphUpdated: "Graph updated.",
+  paramsChanged: "Parameters changed. Click APPLY to update.",
+  noValidYears: "No valid years in metadata.",
+  noCommunities: "No communities calculated.",
+  community: "Community",
+  articleFallback: "Article",
+  year: "Year",
+  authors: "Authors",
+  doi: "DOI",
+  degree: "Degree",
+  keywords: "Keywords",
+  articles: "articles",
+  period: "period",
+  representativeTerms: "Representative terms",
+  noTerms: "Not enough terms.",
+  representative: "Community representative",
+  internalStrength: "Internal strength",
+  clickNode: "Click a graph node.",
+  clickCommunity: "Click a community.",
+  editable: "editable",
+  shaping: "shaping",
+  organizing: "laying out",
+  locked: "locked",
+  centered: "centered",
+  communityStatus: "community {id}",
+  yearStatus: "year {year}",
+};
+
 const $ = (id) => document.getElementById(id);
+
+function text(key, values = {}) {
+  const template = ui[key] || key;
+  return Object.entries(values).reduce(
+    (message, [name, value]) => message.replaceAll(`{${name}}`, value),
+    template,
+  );
+}
 
 function communityColor(community) {
   if (community < 0) return "#6b7280";
@@ -58,26 +105,29 @@ async function uploadDataset(file) {
   form.append("file", file);
   $("apply").disabled = true;
   enableExports(false);
-  setBusy("Lendo RIS e gerando embeddings...");
+  setBusy(text("uploadBusy"));
   $("dataset-status").textContent = file.name;
 
   const response = await fetch("/api/datasets", { method: "POST", body: form });
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.detail || "Falha ao carregar arquivo.");
+    throw new Error(error.detail || text("uploadFail"));
   }
 
   const data = await response.json();
   state.datasetId = data.dataset_id;
-  $("dataset-status").textContent = `${data.filename} - ${data.articles_count} artigos carregados`;
+  $("dataset-status").textContent = text("loadedCount", {
+    filename: data.filename,
+    count: data.articles_count,
+  });
   $("apply").disabled = false;
-  setBusy("Parametros prontos. Clique em APLICAR para construir o grafo.");
+  setBusy(text("paramsReady"));
 }
 
 async function applyGraph() {
   if (!state.datasetId) return;
   $("apply").disabled = true;
-  setBusy("Construindo grafo e detectando comunidades...");
+  setBusy(text("buildBusy"));
 
   const response = await fetch("/api/graph", {
     method: "POST",
@@ -87,18 +137,20 @@ async function applyGraph() {
 
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.detail || "Falha ao construir grafo.");
+    throw new Error(error.detail || text("graphFail"));
   }
 
   const graph = await response.json();
   state.graph = graph;
+  state.selectedNode = null;
+  state.selectedCommunity = null;
   renderGraph(graph);
   renderStats(graph.stats);
   renderTimeline(graph.timeline || []);
-  renderCommunities(graph.communities || [], graph.nodes);
+  renderCommunities(graph.communities || []);
   renderCommunityInsight(null);
   enableExports(true);
-  setBusy("Grafo atualizado.");
+  setBusy(text("graphUpdated"));
   $("apply").disabled = false;
 }
 
@@ -234,16 +286,16 @@ function renderGraph(graph) {
   });
 
   state.cy.on("drag", "node", () => {
-    $("graph-status").textContent = "moldando";
+    $("graph-status").textContent = text("shaping");
   });
 
-  $("graph-status").textContent = "editavel";
+  $("graph-status").textContent = text("editable");
   state.cy.fit(undefined, 42);
 }
 
 function runLayout() {
   if (!state.cy) return;
-  $("graph-status").textContent = "organizando";
+  $("graph-status").textContent = text("organizing");
   const layout = state.cy.layout({
     name: "cose",
     animate: false,
@@ -259,7 +311,7 @@ function runLayout() {
     componentSpacing: 90,
   });
   layout.on("layoutstop", () => {
-    $("graph-status").textContent = "editavel";
+    $("graph-status").textContent = text("editable");
   });
   layout.run();
 }
@@ -276,7 +328,7 @@ function renderStats(stats) {
 function renderTimeline(timeline) {
   if (!timeline.length) {
     $("timeline").classList.add("empty");
-    $("timeline").textContent = "Sem anos validos nos metadados.";
+    $("timeline").textContent = text("noValidYears");
     return;
   }
 
@@ -300,10 +352,10 @@ function renderTimeline(timeline) {
   });
 }
 
-function renderCommunities(communities, nodes) {
+function renderCommunities(communities) {
   if (!communities.length) {
     $("communities").classList.add("empty");
-    $("communities").textContent = "Nenhuma comunidade calculada.";
+    $("communities").textContent = text("noCommunities");
     return;
   }
 
@@ -314,7 +366,7 @@ function renderCommunities(communities, nodes) {
       const width = Math.max(6, (community.size / maxCount) * 100);
       return `
       <div class="community-item" data-community="${community.id}">
-        <span>Comunidade ${community.id}</span>
+        <span>${text("community")} ${community.id}</span>
         <strong>${community.size}</strong>
         <div class="community-bar">
           <div class="community-fill" style="width: ${width}%; background: ${communityColor(community.id)}"></div>
@@ -335,16 +387,17 @@ function renderCommunities(communities, nodes) {
 }
 
 function renderSelected(node) {
+  state.selectedNode = node;
   $("selected-node").classList.remove("empty");
   $("selected-node").innerHTML = `
-    <h3>${escapeHtml(node.title || `Artigo ${node.id}`)}</h3>
+    <h3>${escapeHtml(node.title || `${text("articleFallback")} ${node.id}`)}</h3>
     <p><strong>ID:</strong> ${escapeHtml(node.id)}</p>
-    <p><strong>Ano:</strong> ${escapeHtml(node.year || "N/A")}</p>
-    <p><strong>Autores:</strong> ${escapeHtml(node.authors || "N/A")}</p>
-    <p><strong>DOI:</strong> ${escapeHtml(node.doi || "N/A")}</p>
-    <p><strong>Comunidade:</strong> ${escapeHtml(String(node.community))}</p>
-    <p><strong>Grau:</strong> ${escapeHtml(String(node.degree))}</p>
-    ${node.keywords ? `<p><strong>Palavras-chave:</strong> ${escapeHtml(node.keywords)}</p>` : ""}
+    <p><strong>${text("year")}:</strong> ${escapeHtml(node.year || "N/A")}</p>
+    <p><strong>${text("authors")}:</strong> ${escapeHtml(node.authors || "N/A")}</p>
+    <p><strong>${text("doi")}:</strong> ${escapeHtml(node.doi || "N/A")}</p>
+    <p><strong>${text("community")}:</strong> ${escapeHtml(String(node.community))}</p>
+    <p><strong>${text("degree")}:</strong> ${escapeHtml(String(node.degree))}</p>
+    ${node.keywords ? `<p><strong>${text("keywords")}:</strong> ${escapeHtml(node.keywords)}</p>` : ""}
     ${node.abstract ? `<div class="abstract"><p>${escapeHtml(node.abstract)}</p></div>` : ""}
   `;
 }
@@ -352,17 +405,19 @@ function renderSelected(node) {
 function renderCommunityInsight(summary) {
   const target = $("community-insight");
   if (!summary) {
+    state.selectedCommunity = null;
     target.classList.add("empty");
-    target.textContent = "Clique em uma comunidade.";
+    target.textContent = text("clickCommunity");
     return;
   }
 
+  state.selectedCommunity = summary;
   target.classList.remove("empty");
   const terms = summary.terms && summary.terms.length
     ? summary.terms
         .map((term) => `<span class="term-chip">${escapeHtml(term.term)}</span>`)
         .join("")
-    : `<span class="muted">Sem termos suficientes.</span>`;
+    : `<span class="muted">${text("noTerms")}</span>`;
 
   const period = summary.year_min && summary.year_max
     ? `${summary.year_min} - ${summary.year_max}`
@@ -370,17 +425,17 @@ function renderCommunityInsight(summary) {
 
   target.innerHTML = `
     <div class="insight-metrics">
-      <div><span>${summary.size}</span><small>artigos</small></div>
-      <div><span>${escapeHtml(period)}</span><small>periodo</small></div>
+      <div><span>${summary.size}</span><small>${text("articles")}</small></div>
+      <div><span>${escapeHtml(period)}</span><small>${text("period")}</small></div>
     </div>
-    <strong>Termos representativos</strong>
+    <strong>${text("representativeTerms")}</strong>
     <div class="term-cloud">${terms}</div>
     <div class="representative">
-      <strong>Representante da comunidade</strong>
-      <h3>${escapeHtml(summary.representative.title || `Artigo ${summary.representative.id}`)}</h3>
-      <p><strong>Ano:</strong> ${escapeHtml(summary.representative.year || "N/A")}</p>
-      <p><strong>Autores:</strong> ${escapeHtml(summary.representative.authors || "N/A")}</p>
-      <p><strong>Forca interna:</strong> ${Number(summary.representative.strength).toFixed(3)}</p>
+      <strong>${text("representative")}</strong>
+      <h3>${escapeHtml(summary.representative.title || `${text("articleFallback")} ${summary.representative.id}`)}</h3>
+      <p><strong>${text("year")}:</strong> ${escapeHtml(summary.representative.year || "N/A")}</p>
+      <p><strong>${text("authors")}:</strong> ${escapeHtml(summary.representative.authors || "N/A")}</p>
+      <p><strong>${text("internalStrength")}:</strong> ${Number(summary.representative.strength).toFixed(3)}</p>
     </div>
   `;
 }
@@ -393,8 +448,13 @@ function clearGraphHighlight() {
 function clearSelection() {
   if (!state.cy) return;
   clearGraphHighlight();
+  state.selectedNode = null;
+  clearSelectedText();
+}
+
+function clearSelectedText() {
   $("selected-node").classList.add("empty");
-  $("selected-node").textContent = "Clique em um no do grafo.";
+  $("selected-node").textContent = text("clickNode");
 }
 
 function highlightCommunity(communityId) {
@@ -411,7 +471,7 @@ function highlightCommunity(communityId) {
   if (nodes.length > 0) {
     state.cy.fit(nodes, 54);
   }
-  $("graph-status").textContent = `comunidade ${communityId}`;
+  $("graph-status").textContent = text("communityStatus", { id: communityId });
 }
 
 function highlightYear(year) {
@@ -428,7 +488,7 @@ function highlightYear(year) {
   if (nodes.length > 0) {
     state.cy.fit(nodes, 54);
   }
-  $("graph-status").textContent = `ano ${year}`;
+  $("graph-status").textContent = text("yearStatus", { year });
 }
 
 function applySearch() {
@@ -469,14 +529,17 @@ function escapeHtml(value) {
     .replace(/'/g, "&#039;");
 }
 
-$("method").addEventListener("change", updateMethodControls);
+$("method").addEventListener("change", () => {
+  updateMethodControls();
+  setBusy(text("paramsChanged"));
+});
 $("epsilon").addEventListener("input", () => {
   $("epsilon-value").textContent = Number($("epsilon").value).toFixed(2);
-  setBusy("Parametros alterados. Clique em APLICAR para atualizar.");
+  setBusy(text("paramsChanged"));
 });
 $("k").addEventListener("input", () => {
   $("k-value").textContent = $("k").value;
-  setBusy("Parametros alterados. Clique em APLICAR para atualizar.");
+  setBusy(text("paramsChanged"));
 });
 $("file-input").addEventListener("change", async (event) => {
   const file = event.target.files[0];
@@ -485,7 +548,7 @@ $("file-input").addEventListener("change", async (event) => {
     await uploadDataset(file);
   } catch (error) {
     setBusy(error.message);
-    $("dataset-status").textContent = "Falha no carregamento.";
+    $("dataset-status").textContent = text("uploadFail");
   }
 });
 $("apply").addEventListener("click", async () => {
@@ -501,17 +564,17 @@ $("layout").addEventListener("click", runLayout);
 $("lock").addEventListener("click", () => {
   if (!state.cy) return;
   state.cy.nodes().ungrabify();
-  $("graph-status").textContent = "travado";
+  $("graph-status").textContent = text("locked");
 });
 $("unlock").addEventListener("click", () => {
   if (!state.cy) return;
   state.cy.nodes().grabify();
-  $("graph-status").textContent = "editavel";
+  $("graph-status").textContent = text("editable");
 });
 $("fit").addEventListener("click", () => {
   if (!state.cy) return;
   state.cy.fit(undefined, 42);
-  $("graph-status").textContent = "centralizado";
+  $("graph-status").textContent = text("centered");
 });
 $("export-csv").addEventListener("click", () => exportUrl("csv"));
 $("export-json").addEventListener("click", () => exportUrl("json"));
