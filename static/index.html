@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Similarity Graph Explorer</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+    <script src="/static/cytoscape.min.js" defer></script>
+    <script src="/static/app.js" defer></script>
+  </head>
+  <body>
+    <aside class="sidebar">
+      <div class="brand">
+        <h1>Similarity Graph Explorer</h1>
+        <p>Artigos, similaridade e comunidades em uma interface exploravel.</p>
+      </div>
+
+      <section class="panel">
+        <label class="file-drop">
+          <span>Arquivo RIS</span>
+          <input id="file-input" type="file" accept=".ris" />
+        </label>
+        <div id="dataset-status" class="muted">Nenhum dataset carregado.</div>
+      </section>
+
+      <section class="panel">
+        <h2>Construcao do grafo</h2>
+        <label>
+          Metodo
+          <select id="method">
+            <option value="epsilon">E-threshold</option>
+            <option value="knn">K-NN</option>
+          </select>
+        </label>
+
+        <label id="epsilon-control">
+          Similaridade minima
+          <input id="epsilon" type="range" min="0" max="1" value="0.45" step="0.01" />
+          <output id="epsilon-value">0.45</output>
+        </label>
+
+        <label id="k-control" class="hidden">
+          Vizinhos por artigo
+          <input id="k" type="range" min="1" max="60" value="8" step="1" />
+          <output id="k-value">8</output>
+        </label>
+
+        <button id="apply" class="primary" disabled>APLICAR</button>
+        <div id="apply-status" class="muted">Carregue um arquivo para aplicar parametros.</div>
+      </section>
+
+      <section class="panel">
+        <h2>Busca</h2>
+        <input id="search" type="search" placeholder="Titulo, autor ou DOI" />
+      </section>
+
+      <section class="panel">
+        <h2>Exportacao</h2>
+        <div class="button-row">
+          <button id="export-csv" disabled>CSV</button>
+          <button id="export-json" disabled>JSON</button>
+          <button id="export-xlsx" disabled>XLSX</button>
+        </div>
+      </section>
+    </aside>
+
+    <main class="workspace">
+      <header class="topbar">
+        <div class="metrics">
+          <div><span id="m-nodes">0</span><small>Artigos</small></div>
+          <div><span id="m-edges">0</span><small>Arestas</small></div>
+          <div><span id="m-communities">0</span><small>Comunidades</small></div>
+          <div><span id="m-density">0.000</span><small>Densidade</small></div>
+          <div><span id="m-degree">0.00</span><small>Grau medio</small></div>
+          <div><span id="m-isolates">0</span><small>Isolados</small></div>
+        </div>
+      </header>
+
+      <section class="graph-shell">
+        <div id="cy"></div>
+        <div class="graph-toolbar">
+          <button id="layout">Organizar</button>
+          <button id="lock">Travar</button>
+          <button id="unlock">Destravar</button>
+          <button id="fit">Centralizar</button>
+          <span id="graph-status">sem grafo</span>
+        </div>
+      </section>
+    </main>
+
+    <aside class="details">
+      <section class="panel selected">
+        <h2>Artigo selecionado</h2>
+        <div id="selected-node" class="empty">Clique em um no do grafo.</div>
+      </section>
+      <section class="panel">
+        <h2>Linha do tempo</h2>
+        <div id="timeline" class="timeline empty">Execute APLICAR para ver anos.</div>
+      </section>
+      <section class="panel">
+        <h2>Comunidades</h2>
+        <div id="communities" class="community-list empty">Execute APLICAR para ver comunidades.</div>
+      </section>
+      <section class="panel">
+        <h2>Analise da comunidade</h2>
+        <div id="community-insight" class="empty">Clique em uma comunidade.</div>
+      </section>
+    </aside>
+  </body>
+</html>
